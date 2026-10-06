@@ -75,7 +75,7 @@ Cada aluno vota **apenas uma vez**, com autenticação por matrícula, e pode es
 
 ## 📁 Estrutura do Projeto
 
-```
+
 urna_gremio/
 ├── app.py # Servidor Flask + rotas da API
 ├── database.py # Camada de acesso ao SQLite
@@ -91,7 +91,7 @@ urna_gremio/
 ├── login.html # Tela de identificação do eleitor
 ├── urna.html # Interface da urna eletrônica
 └── admin.html # Painel do administrador
-```
+
 
 ---
 

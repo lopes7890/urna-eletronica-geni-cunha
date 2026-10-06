@@ -1,0 +1,942 @@
+---
+
+## 📁 Estrutura do Projeto
+
+```
+urna_gremio/
+├── app.py
+├── database.py
+├── requirements.txt
+├── static/
+│   ├── style.css
+│   └── script.js
+├── templates/
+│   ├── login.html
+│   ├── urna.html
+│   └── admin.html
+└── urna.db            (criado automaticamente)
+```
+
+---
+
+## 1️⃣ `requirements.txt`
+
+```txt
+Flask==3.0.0
+```
+
+Instalar:
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## 2️⃣ `database.py`
+
+```python
+import sqlite3
+from datetime import datetime
+
+DB = "urna.db"
+
+def conectar():
+    conn = sqlite3.connect(DB)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+def init_db():
+    conn = conectar()
+    cur = conn.cursor()
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS alunos (
+            matricula TEXT PRIMARY KEY,
+            nome TEXT NOT NULL,
+            turma TEXT,
+            ja_votou INTEGER DEFAULT 0,
+            data_voto TEXT
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS candidatos (
+            numero TEXT PRIMARY KEY,
+            nome TEXT NOT NULL,
+            chapa TEXT,
+            vice TEXT
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS votos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            matricula TEXT NOT NULL,
+            numero TEXT,
+            tipo TEXT NOT NULL,
+            data_hora TEXT NOT NULL
+        )
+    """)
+
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS config (
+            chave TEXT PRIMARY KEY,
+            valor TEXT
+        )
+    """)
+    cur.execute("INSERT OR IGNORE INTO config VALUES ('encerrada', '0')")
+
+    cur.execute("SELECT COUNT(*) c FROM candidatos")
+    if cur.fetchone()["c"] == 0:
+        cur.executemany("INSERT INTO candidatos VALUES (?,?,?,?)", [
+            ("10", "Ana Silva", "Juntos Somos Mais", "Pedro Costa"),
+            ("20", "Lucas Souza", "Renova Grêmio", "Marina Lima"),
+            ("30", "Beatriz Alves", "Voz Estudantil", "Rafael Dias"),
+        ])
+
+    cur.execute("SELECT COUNT(*) c FROM alunos")
+    if cur.fetchone()["c"] == 0:
+        cur.executemany(
+            "INSERT INTO alunos (matricula, nome, turma) VALUES (?,?,?)",
+            [
+                ("2024001", "João Pereira", "3ºA"),
+                ("2024002", "Maria Oliveira", "3ºB"),
+                ("2024003", "Carlos Santos", "2ºA"),
+                ("2024004", "Júlia Costa", "2ºB"),
+                ("2024005", "Rafael Lima", "1ºA"),
+            ]
+        )
+
+    conn.commit()
+    conn.close()
+
+# ---------- Config ----------
+def get_config(chave):
+    conn = conectar()
+    r = conn.execute("SELECT valor FROM config WHERE chave=?", (chave,)).fetchone()
+    conn.close()
+    return r["valor"] if r else None
+
+def set_config(chave, valor):
+    conn = conectar()
+    conn.execute("INSERT OR REPLACE INTO config VALUES (?,?)", (chave, str(valor)))
+    conn.commit()
+    conn.close()
+
+def eleicao_encerrada():
+    return get_config("encerrada") == "1"
+
+# ---------- Alunos ----------
+def buscar_aluno(matricula):
+    conn = conectar()
+    r = conn.execute("SELECT * FROM alunos WHERE matricula=?", (matricula,)).fetchone()
+    conn.close()
+    return dict(r) if r else None
+
+def listar_alunos():
+    conn = conectar()
+    rs = conn.execute("SELECT * FROM alunos ORDER BY matricula").fetchall()
+    conn.close()
+    return [dict(r) for r in rs]
+
+def cadastrar_aluno(matricula, nome, turma):
+    conn = conectar()
+    conn.execute("INSERT INTO alunos (matricula, nome, turma) VALUES (?,?,?)",
+                 (matricula, nome, turma))
+    conn.commit()
+    conn.close()
+
+def remover_aluno(matricula):
+    conn = conectar()
+    conn.execute("DELETE FROM alunos WHERE matricula=?", (matricula,))
+    conn.commit()
+    conn.close()
+
+# ---------- Candidatos ----------
+def listar_candidatos():
+    conn = conectar()
+    rs = conn.execute("SELECT * FROM candidatos ORDER BY numero").fetchall()
+    conn.close()
+    return [dict(r) for r in rs]
+
+def cadastrar_candidato(numero, nome, chapa, vice):
+    conn = conectar()
+    conn.execute("INSERT INTO candidatos VALUES (?,?,?,?)", (numero, nome, chapa, vice))
+    conn.commit()
+    conn.close()
+
+def remover_candidato(numero):
+    conn = conectar()
+    conn.execute("DELETE FROM candidatos WHERE numero=?", (numero,))
+    conn.commit()
+    conn.close()
+
+# ---------- Votos ----------
+def registrar_voto(matricula, numero, tipo):
+    conn = conectar()
+    agora = datetime.now().isoformat(timespec="seconds")
+    conn.execute(
+        "INSERT INTO votos (matricula, numero, tipo, data_hora) VALUES (?,?,?,?)",
+        (matricula, numero, tipo, agora)
+    )
+    conn.execute(
+        "UPDATE alunos SET ja_votou=1, data_voto=? WHERE matricula=?",
+        (agora, matricula)
+    )
+    conn.commit()
+    conn.close()
+
+def apurar():
+    conn = conectar()
+    candidatos = [dict(r) for r in conn.execute(
+        "SELECT * FROM candidatos ORDER BY numero").fetchall()]
+
+    votos_validos = {c["numero"]: 0 for c in candidatos}
+    for row in conn.execute("SELECT numero FROM votos WHERE tipo='valido'").fetchall():
+        if row["numero"] in votos_validos:
+            votos_validos[row["numero"]] += 1
+
+    brancos = conn.execute("SELECT COUNT(*) c FROM votos WHERE tipo='branco'").fetchone()["c"]
+    nulos = conn.execute("SELECT COUNT(*) c FROM votos WHERE tipo='nulo'").fetchone()["c"]
+    total = conn.execute("SELECT COUNT(*) c FROM votos").fetchone()["c"]
+    votantes = conn.execute("SELECT COUNT(*) c FROM alunos WHERE ja_votou=1").fetchone()["c"]
+    aptos = conn.execute("SELECT COUNT(*) c FROM alunos").fetchone()["c"]
+    conn.close()
+
+    resultado = []
+    for c in candidatos:
+        resultado.append({
+            "numero": c["numero"],
+            "nome": c["nome"],
+            "chapa": c["chapa"],
+            "vice": c["vice"],
+            "votos": votos_validos[c["numero"]]
+        })
+    resultado.sort(key=lambda x: x["votos"], reverse=True)
+    eleito = resultado[0] if resultado and resultado[0]["votos"] > 0 else None
+
+    return {
+        "resultado": resultado,
+        "brancos": brancos,
+        "nulos": nulos,
+        "total_votos": total,
+        "votantes": votantes,
+        "aptos": aptos,
+        "eleito": eleito
+    }
+
+def resetar_eleicao():
+    conn = conectar()
+    conn.execute("DELETE FROM votos")
+    conn.execute("UPDATE alunos SET ja_votou=0, data_voto=NULL")
+    conn.execute("UPDATE config SET valor='0' WHERE chave='encerrada'")
+    conn.commit()
+    conn.close()
+```
+
+---
+
+## 3️⃣ `app.py`
+
+```python
+from flask import Flask, render_template, request, jsonify, session, redirect
+from functools import wraps
+import database as db
+
+app = Flask(__name__)
+app.secret_key = "troque-esta-chave-em-producao"
+
+SENHA_ADMIN = "admin123"
+
+db.init_db()
+
+# ================= PÁGINAS =================
+@app.route("/")
+def index():
+    return render_template("login.html")
+
+@app.route("/urna")
+def urna():
+    if "matricula" not in session:
+        return redirect("/")
+    if db.eleicao_encerrada():
+        session.clear()
+        return render_template("login.html", erro="A votação foi encerrada.")
+    return render_template("urna.html")
+
+@app.route("/admin")
+def admin():
+    return render_template("admin.html")
+
+# ================= API ELEITOR =================
+@app.route("/api/login", methods=["POST"])
+def api_login():
+    d = request.get_json() or {}
+    matricula = (d.get("matricula") or "").strip()
+
+    if not matricula:
+        return jsonify({"ok": False, "msg": "Informe a matrícula."}), 400
+    if db.eleicao_encerrada():
+        return jsonify({"ok": False, "msg": "A votação foi encerrada."}), 403
+
+    aluno = db.buscar_aluno(matricula)
+    if not aluno:
+        return jsonify({"ok": False, "msg": "Matrícula não encontrada."}), 404
+    if aluno["ja_votou"]:
+        return jsonify({"ok": False, "msg": "Esta matrícula já votou."}), 403
+
+    session["matricula"] = matricula
+    session["nome"] = aluno["nome"]
+    return jsonify({"ok": True, "nome": aluno["nome"], "turma": aluno["turma"]})
+
+@app.route("/api/candidatos")
+def api_candidatos():
+    if "matricula" not in session:
+        return jsonify({"ok": False, "msg": "Não autenticado."}), 401
+    cands = db.listar_candidatos()
+    return jsonify({"ok": True, "candidatos": [
+        {"numero": c["numero"], "nome": c["nome"],
+         "chapa": c["chapa"], "vice": c["vice"]} for c in cands
+    ]})
+
+@app.route("/api/votar", methods=["POST"])
+def api_votar():
+    if "matricula" not in session:
+        return jsonify({"ok": False, "msg": "Sessão expirada."}), 401
+
+    matricula = session["matricula"]
+    aluno = db.buscar_aluno(matricula)
+    if not aluno:
+        return jsonify({"ok": False, "msg": "Aluno inválido."}), 404
+    if aluno["ja_votou"]:
+        return jsonify({"ok": False, "msg": "Você já votou."}), 403
+    if db.eleicao_encerrada():
+        return jsonify({"ok": False, "msg": "Votação encerrada."}), 403
+
+    d = request.get_json() or {}
+    tipo = d.get("tipo")
+    numero = d.get("numero")
+
+    if tipo not in ("valido", "branco", "nulo"):
+        return jsonify({"ok": False, "msg": "Tipo inválido."}), 400
+
+    if tipo == "valido":
+        cands = {c["numero"] for c in db.listar_candidatos()}
+        if numero not in cands:
+            return jsonify({"ok": False, "msg": "Número inválido."}), 400
+        db.registrar_voto(matricula, numero, "valido")
+        nome = next(c["nome"] for c in db.listar_candidatos() if c["numero"] == numero)
+        session.pop("matricula", None)
+        return jsonify({"ok": True, "tipo": "valido", "nome": nome})
+
+    if tipo == "branco":
+        db.registrar_voto(matricula, None, "branco")
+        session.pop("matricula", None)
+        return jsonify({"ok": True, "tipo": "branco"})
+
+    db.registrar_voto(matricula, numero or "00", "nulo")
+    session.pop("matricula", None)
+    return jsonify({"ok": True, "tipo": "nulo"})
+
+@app.route("/api/logout", methods=["POST"])
+def api_logout():
+    session.clear()
+    return jsonify({"ok": True})
+
+# ================= API ADMIN =================
+def admin_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("admin"):
+            return jsonify({"ok": False, "msg": "Não autorizado."}), 401
+        return f(*args, **kwargs)
+    return wrapper
+
+@app.route("/api/admin/login", methods=["POST"])
+def admin_login():
+    d = request.get_json() or {}
+    if d.get("senha") == SENHA_ADMIN:
+        session["admin"] = True
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "msg": "Senha incorreta."}), 401
+
+@app.route("/api/admin/logout", methods=["POST"])
+def admin_logout():
+    session.pop("admin", None)
+    return jsonify({"ok": True})
+
+@app.route("/api/admin/apurar")
+@admin_required
+def admin_apurar():
+    return jsonify({"ok": True, **db.apurar()})
+
+@app.route("/api/admin/status")
+@admin_required
+def admin_status():
+    return jsonify({"ok": True, "encerrada": db.eleicao_encerrada()})
+
+@app.route("/api/admin/encerrar", methods=["POST"])
+@admin_required
+def admin_encerrar():
+    db.set_config("encerrada", "1")
+    return jsonify({"ok": True})
+
+@app.route("/api/admin/abrir", methods=["POST"])
+@admin_required
+def admin_abrir():
+    db.set_config("encerrada", "0")
+    return jsonify({"ok": True})
+
+@app.route("/api/admin/resetar", methods=["POST"])
+@admin_required
+def admin_resetar():
+    db.resetar_eleicao()
+    return jsonify({"ok": True})
+
+@app.route("/api/admin/candidatos", methods=["GET", "POST", "DELETE"])
+@admin_required
+def admin_candidatos():
+    if request.method == "GET":
+        return jsonify({"ok": True, "candidatos": db.listar_candidatos()})
+    if request.method == "POST":
+        d = request.get_json() or {}
+        try:
+            db.cadastrar_candidato(d["numero"], d["nome"], d.get("chapa",""), d.get("vice",""))
+            return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "msg": str(e)}), 400
+    d = request.get_json() or {}
+    db.remover_candidato(d["numero"])
+    return jsonify({"ok": True})
+
+@app.route("/api/admin/alunos", methods=["GET", "POST", "DELETE"])
+@admin_required
+def admin_alunos():
+    if request.method == "GET":
+        return jsonify({"ok": True, "alunos": db.listar_alunos()})
+    if request.method == "POST":
+        d = request.get_json() or {}
+        try:
+            db.cadastrar_aluno(d["matricula"], d["nome"], d.get("turma",""))
+            return jsonify({"ok": True})
+        except Exception as e:
+            return jsonify({"ok": False, "msg": str(e)}), 400
+    d = request.get_json() or {}
+    db.remover_aluno(d["matricula"])
+    return jsonify({"ok": True})
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
+```
+
+---
+
+## 4️⃣ `templates/login.html`
+
+```html
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Identificação do Eleitor</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="login-body">
+
+<div class="login-card">
+  <div class="login-logo">TSE</div>
+  <h1>ELEIÇÕES GRÊMIO ESTUDANTIL</h1>
+  <p>Identifique-se para votar</p>
+
+  {% if erro %}<div class="erro">{{ erro }}</div>{% endif %}
+  <div id="msg" class="erro" style="display:none"></div>
+
+  <input id="matricula" type="text" placeholder="Digite sua matrícula"
+         maxlength="20" autocomplete="off" autofocus>
+  <button onclick="entrar()">ENTRAR</button>
+
+  <div class="rodape">Mesário: confira a identidade do aluno</div>
+</div>
+
+<script>
+async function entrar() {
+  const mat = document.getElementById("matricula").value.trim();
+  const msg = document.getElementById("msg");
+  msg.style.display = "none";
+
+  if (!mat) { msg.textContent = "Digite a matrícula."; msg.style.display = "block"; return; }
+
+  const r = await fetch("/api/login", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({matricula: mat})
+  });
+  const d = await r.json();
+  if (d.ok) {
+    window.location.href = "/urna";
+  } else {
+    msg.textContent = d.msg;
+    msg.style.display = "block";
+  }
+}
+document.getElementById("matricula").addEventListener("keydown", e => {
+  if (e.key === "Enter") entrar();
+});
+</script>
+</body>
+</html>
+```
+
+---
+
+## 5️⃣ `templates/urna.html`
+
+```html
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Urna Eletrônica</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body class="urna-body">
+
+<div class="urna">
+  <div class="urna-topo">
+    <span class="logo-tse">TSE</span>
+    <span class="titulo-urna">URNA ELETRÔNICA</span>
+    <span class="modelo">UE2009</span>
+  </div>
+
+  <div class="urna-corpo">
+    <!-- ================= TELA ================= -->
+    <div class="tela">
+      <div class="tela-topo">
+        <div class="tela-titulo">
+          ELEIÇÕES GRÊMIO ESTUDANTIL<br>
+          <small>Cargo: Grêmio Estudantil</small>
+        </div>
+        <div class="tela-hora" id="hora">--:--</div>
+      </div>
+
+      <div class="tela-main">
+        <div class="seu-voto">SEU VOTO PARA</div>
+        <div class="cargo">GRÊMIO ESTUDANTIL</div>
+
+        <div class="conteudo-voto">
+          <div class="numero-col">
+            <div class="numero-label">Número:</div>
+            <div class="numero-display" id="numero">
+              <span class="dig"></span>
+              <span class="dig"></span>
+            </div>
+          </div>
+
+          <div class="foto-col">
+            <div class="foto-box">
+              <div class="foto-vazia">FOTO</div>
+            </div>
+          </div>
+
+          <div class="info-col">
+            <div class="info-linha"><b>Nome:</b> <span id="info-nome">—</span></div>
+            <div class="info-linha"><b>Chapa:</b> <span id="info-chapa">—</span></div>
+            <div class="info-linha"><b>Vice:</b> <span id="info-vice">—</span></div>
+          </div>
+        </div>
+
+        <div class="msg-central" id="msg-central">
+          Aperte a tecla verde <b>CONFIRMA</b> para confirmar<br>
+          ou <b>BRANCO</b> para votar em branco
+        </div>
+
+        <div class="rodape-tela">
+          <div class="rodape-esq" id="rodape-esq"></div>
+          <div class="rodape-dir">Eleitor: {{ session.nome }}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================= TECLADO ================= -->
+    <div class="teclado">
+      <div class="teclado-grid">
+        <button class="tecla num" data-n="1">1</button>
+        <button class="tecla num" data-n="2">2</button>
+        <button class="tecla num" data-n="3">3</button>
+        <button class="tecla num" data-n="4">4</button>
+        <button class="tecla num" data-n="5">5</button>
+        <button class="tecla num" data-n="6">6</button>
+        <button class="tecla num" data-n="7">7</button>
+        <button class="tecla num" data-n="8">8</button>
+        <button class="tecla num" data-n="9">9</button>
+        <button class="tecla num" data-n="0">0</button>
+      </div>
+
+      <div class="teclado-acoes">
+        <button class="tecla branco" id="btn-branco"><span>BRANCO</span></button>
+        <button class="tecla corrige" id="btn-corrige"><span>CORRIGE</span></button>
+        <button class="tecla confirma" id="btn-confirma"><span>CONFIRMA</span></button>
+      </div>
+    </div>
+  </div>
+
+  <div class="urna-rodape">JUSTIÇA ELEITORAL — GRÊMIO ESTUDANTIL</div>
+</div>
+
+<!-- Overlay FIM -->
+<div class="fim-overlay" id="fim-overlay" style="display:none">
+  <div class="fim-box">
+    <div class="fim-titulo">FIM</div>
+    <div class="fim-msg" id="fim-msg">Voto registrado com sucesso</div>
+    <button onclick="sair()">ENCERRAR SESSÃO</button>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+<script>
+  window.__NOME__ = "{{ session.nome }}";
+  // Relógio
+  setInterval(() => {
+    const d = new Date();
+    document.getElementById("hora").textContent =
+      String(d.getHours()).padStart(2,"0") + ":" +
+      String(d.getMinutes()).padStart(2,"0");
+  }, 1000);
+
+  function sair() {
+    fetch("/api/logout", {method:"POST"}).finally(() => window.location.href = "/");
+  }
+</script>
+</body>
+</html>
+```
+
+---
+
+## 6️⃣ `static/script.js`
+
+```javascript
+/* ================= ESTADO ================= */
+let CANDIDATOS = {};
+let numero = "";
+let bloqueado = false;   // trava durante confirmação / fim
+
+/* ================= INICIALIZAÇÃO ================= */
+document.addEventListener("DOMContentLoaded", async () => {
+  const r = await fetch("/api/candidatos");
+  const d = await r.json();
+  if (d.ok) {
+    d.candidatos.forEach(c => CANDIDATOS[c.numero] = c);
+  }
+  atualizar();
+  ligarTeclado();
+});
+
+/* ================= TECLADO ================= */
+function ligarTeclado() {
+  document.querySelectorAll(".tecla.num").forEach(btn => {
+    btn.addEventListener("click", () => {
+      if (bloqueado) return;
+      digitar(btn.dataset.n);
+    });
+  });
+
+  document.getElementById("btn-branco").addEventListener("click", () => {
+    if (bloqueado) return;
+    votoBranco();
+  });
+  document.getElementById("btn-corrige").addEventListener("click", () => {
+    if (bloqueado) return;
+    corrigir();
+  });
+  document.getElementById("btn-confirma").addEventListener("click", () => {
+    if (bloqueado) return;
+    confirmar();
+  });
+
+  // Suporte a teclado físico
+  document.addEventListener("keydown", (e) => {
+    if (bloqueado) return;
+    if (/^[0-9]$/.test(e.key)) digitar(e.key);
+    else if (e.key === "Backspace") corrigir();
+    else if (e.key === "Enter") confirmar();
+    else if (e.key === "b" || e.key === "B") votoBranco();
+  });
+}
+
+/* ================= AÇÕES ================= */
+function digitar(n) {
+  if (numero.length < 2) {
+    numero += n;
+    atualizar();
+  }
+}
+
+function corrigir() {
+  numero = "";
+  atualizar();
+  setMsg("Aperte a tecla verde <b>CONFIRMA</b> para confirmar<br>ou <b>BRANCO</b> para votar em branco");
+}
+
+function atualizar() {
+  // Dígitos
+  const digEls = document.querySelectorAll("#numero .dig");
+  const chars = numero.padEnd(2, " ").split("");
+  digEls.forEach((el, i) => {
+    const ch = chars[i].trim();
+    el.textContent = ch || "";
+    el.classList.toggle("preenchido", !!ch);
+  });
+
+  // Informações
+  const nomeEl = document.getElementById("info-nome");
+  const chapaEl = document.getElementById("info-chapa");
+  const viceEl = document.getElementById("info-vice");
+  const msg = document.getElementById("msg-central");
+
+  if (CANDIDATOS[numero]) {
+    const c = CANDIDATOS[numero];
+    nomeEl.textContent = c.nome;
+    chapaEl.textContent = c.chapa;
+    viceEl.textContent = c.vice;
+    msg.classList.remove("alerta");
+    setMsg("Aperte a tecla verde <b>CONFIRMA</b> para confirmar");
+  } else if (numero.length === 2) {
+    nomeEl.textContent = "—";
+    chapaEl.textContent = "—";
+    viceEl.textContent = "—";
+    msg.classList.add("alerta");
+    setMsg("NÚMERO ERRADO<br>Aperte <b>CORRIGE</b> para digitar novamente");
+  } else {
+    nomeEl.textContent = "—";
+    chapaEl.textContent = "—";
+    viceEl.textContent = "—";
+    msg.classList.remove("alerta");
+    setMsg("Aperte a tecla verde <b>CONFIRMA</b> para confirmar<br>ou <b>BRANCO</b> para votar em branco");
+  }
+}
+
+function setMsg(html) {
+  document.getElementById("msg-central").innerHTML = html;
+}
+
+/* ================= VOTAR ================= */
+async function votoBranco() {
+  if (!confirm("Confirmar voto em BRANCO?")) return;
+  await enviar({tipo: "branco"});
+}
+
+async function confirmar() {
+  if (numero.length < 2) {
+    alert("Digite os 2 dígitos do candidato ou pressione BRANCO.");
+    return;
+  }
+  if (CANDIDATOS[numero]) {
+    const c = CANDIDATOS[numero];
+    if (!confirm(`Confirmar voto em:\n\n${c.nome}\nChapa: ${c.chapa}\nVice: ${c.vice}`)) return;
+    await enviar({tipo: "valido", numero: numero});
+  } else {
+    if (!confirm("Número inexistente.\n\nConfirmar como VOTO NULO?")) return;
+    await enviar({tipo: "nulo", numero: numero});
+  }
+}
+
+async function enviar(payload) {
+  bloqueado = true;
+  try {
+    const r = await fetch("/api/votar", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(payload)
+    });
+    const d = await r.json();
+    if (!d.ok) {
+      alert(d.msg || "Erro ao registrar o voto.");
+      bloqueado = false;
+      return;
+    }
+    mostrarFim(d);
+  } catch (e) {
+    alert("Erro de comunicação com o servidor.");
+    bloqueado = false;
+  }
+}
+
+/* ================= FIM ================= */
+function mostrarFim(d) {
+  document.getElementById("fim-overlay").style.display = "flex";
+  let msg = "";
+  if (d.tipo === "valido") msg = `Voto confirmado em <b>${d.nome}</b>`;
+  else if (d.tipo === "branco") msg = "Voto em <b>BRANCO</b> registrado";
+  else msg = "Voto <b>NULO</b> registrado";
+  document.getElementById("fim-msg").innerHTML = msg;
+
+  // Fecha automaticamente após 5s
+  setTimeout(() => {
+    fetch("/api/logout", {method:"POST"}).finally(() => window.location.href = "/");
+  }, 5000);
+}
+```
+
+---
+
+## 7️⃣ `static/style.css` — Visual idêntico à urna UE2009
+
+```css
+/* ============== RESET ============== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+  min-height: 100vh;
+  color: #222;
+}
+
+/* ============== LOGIN ============== */
+.login-body {
+  background: linear-gradient(135deg, #003366, #001a33);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.login-card {
+  background: #fff;
+  border-radius: 14px;
+  padding: 40px 34px;
+  width: 400px;
+  text-align: center;
+  box-shadow: 0 20px 60px rgba(0,0,0,.5);
+}
+.login-logo {
+  display: inline-block;
+  background: #003366; color: #fff;
+  padding: 6px 14px; border-radius: 6px;
+  font-weight: bold; letter-spacing: 3px;
+  margin-bottom: 14px;
+}
+.login-card h1 {
+  color: #003366; font-size: 18px;
+  margin-bottom: 8px; letter-spacing: 1px;
+}
+.login-card p { color: #666; margin-bottom: 20px; font-size: 14px; }
+.login-card input {
+  width: 100%; padding: 14px; font-size: 18px;
+  border: 2px solid #ccc; border-radius: 8px;
+  text-align: center; letter-spacing: 2px;
+  margin-bottom: 14px;
+}
+.login-card input:focus { border-color: #003366; outline: none; }
+.login-card button {
+  width: 100%; padding: 14px;
+  background: #003366; color: #fff;
+  border: none; border-radius: 8px;
+  font-size: 16px; font-weight: bold;
+  cursor: pointer; letter-spacing: 2px;
+}
+.login-card button:hover { background: #004c99; }
+.erro {
+  background: #ffe0e0; color: #a00;
+  padding: 10px; border-radius: 6px;
+  margin-bottom: 12px; font-size: 14px;
+}
+.rodape { margin-top: 20px; color: #999; font-size: 12px; }
+
+/* ============== URNA (GABINETE) ============== */
+.urna-body {
+  background: radial-gradient(circle at 50% 0%, #4a4a4a, #161616 80%);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.urna {
+  width: 780px; max-width: 100%;
+  background: linear-gradient(180deg, #dcdcdc, #b8b8b8);
+  border-radius: 18px;
+  padding: 14px;
+  border: 2px solid #888;
+  box-shadow:
+    0 30px 60px rgba(0,0,0,.6),
+    inset 0 2px 0 #fff,
+    inset 0 -3px 6px rgba(0,0,0,.25);
+}
+
+.urna-topo {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 4px 12px 10px; font-weight: bold; color: #333;
+}
+.logo-tse {
+  background: #003366; color: #fff;
+  padding: 4px 10px; border-radius: 4px;
+  font-size: 13px; letter-spacing: 3px;
+}
+.titulo-urna { font-size: 13px; letter-spacing: 3px; color: #444; }
+.modelo { font-size: 12px; color: #666; }
+
+.urna-corpo {
+  display: flex; gap: 12px;
+  background: #cfcfcf;
+  border-radius: 12px;
+  padding: 12px;
+  border: 1px solid #999;
+  box-shadow: inset 0 0 12px rgba(0,0,0,.15);
+}
+
+/* ============== TELA ============== */
+.tela {
+  flex: 1;
+  background: #f6f6e8;
+  border: 3px solid #444;
+  border-radius: 6px;
+  padding: 10px;
+  font-family: "Courier New", monospace;
+  color: #111;
+  display: flex; flex-direction: column;
+  min-height: 440px;
+  box-shadow: inset 0 0 12px rgba(0,0,0,.2);
+  position: relative;
+  overflow: hidden;
+}
+.tela::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: repeating-linear-gradient(
+    0deg, rgba(0,0,0,.035) 0px, rgba(0,0,0,.035) 1px,
+    transparent 1px, transparent 3px);
+  pointer-events: none;
+}
+
+.tela-topo {
+  display: flex; justify-content: space-between;
+  border-bottom: 2px solid #000;
+  padding-bottom: 6px; margin-bottom: 8px;
+  font-size: 12px;
+}
+.tela-titulo { font-weight: bold; }
+.tela-titulo small { font-weight: normal; font-size: 10px; }
+.tela-hora { font-weight: bold; }
+
+.tela-main { flex: 1; display: flex; flex-direction: column; }
+.seu-voto {
+  font-size: 11px; font-weight: bold;
+  letter-spacing: 1px; margin-bottom: 2px;
+}
+.cargo {
+  font-size: 14px; font-weight: bold;
+  border-bottom: 1px solid #000;
+  padding-bottom: 4px; margin-bottom: 12px;
+}
+
+.conteudo-voto {
+  display: grid;
+  grid-template-columns: 100px 110px 1fr;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.numero-label { font-size: 11px; font-weight: bold; }
+.numero-display { display: flex; gap: 6px; margin-top: 6px; }
+.numero-display .dig {
+  width: 40px; height: 56px;
+  border: 2px solid #000; background: #fff;
+  font-size: 34px; font-weight: bold;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .1s;
+}
+.numero-display .dig.preenchido

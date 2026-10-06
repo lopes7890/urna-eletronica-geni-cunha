@@ -77,20 +77,20 @@ Cada aluno vota **apenas uma vez**, com autenticação por matrícula, e pode es
 
 ```
 urna_gremio/
-├── app.py                  # Servidor Flask + rotas da API
-├── database.py             # Camada de acesso ao SQLite
-├── requirements.txt        # Dependências Python
-├── README.md               # Este arquivo
-├── urna.db                 # Banco SQLite (criado automaticamente)
+├── app.py # Servidor Flask + rotas da API
+├── database.py # Camada de acesso ao SQLite
+├── requirements.txt # Dependências Python
+├── README.md # Este arquivo
+├── urna.db # Banco SQLite (criado automaticamente)
 │
 ├── static/
-│   ├── style.css           # Visual completo da urna UE2009
-│   └── script.js           # Lógica do frontend (teclado, votação)
+│ ├── style.css # Visual completo da urna UE2009
+│ └── script.js # Lógica do frontend (teclado, votação)
 │
 └── templates/
-    ├── login.html          # Tela de identificação do eleitor
-    ├── urna.html           # Interface da urna eletrônica
-    └── admin.html          # Painel do administrador
+├── login.html # Tela de identificação do eleitor
+├── urna.html # Interface da urna eletrônica
+└── admin.html # Painel do administrador
 ```
 
 ---

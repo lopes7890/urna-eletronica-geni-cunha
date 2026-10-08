@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Painel da Urna</title>
+<style>
+:root{--bg:#e9ebe4;--ink:#1d2a24;--mut:#66726b;--card:#fbfbf8;--line:#d3d8cf;--pri:#1f5f4a;--pri2:#16473a;--warn:#c8472f;--yel:#e8b931}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.45 "Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+button,input,select,textarea{font:inherit}
+.hidden{display:none!important}
+:focus-visible{outline:3px solid var(--yel);outline-offset:2px}
+.btn{border:0;border-radius:8px;padding:10px 16px;background:var(--pri);color:#fff;cursor:pointer;font-weight:600}
+.btn:hover{background:var(--pri2)}
+.btn.sec{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.sec:hover{background:#eef0ea}
+.btn.del{background:var(--warn)}
+.btn.sm{padding:6px 10px;font-size:14px}
+label{display:block;font-size:14px;font-weight:600;margin:12px 0 4px}
+input[type=text],input[type=password],input[type=number],select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:#fff}
+.msg{margin-top:12px;font-size:14px;color:var(--warn);min-height:20px}
+.msg.ok{color:var(--pri);font-weight:600}
+#login{min-height:100vh;display:grid;place-items:center;padding:20px}
+.box{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:32px}
+.box h1{margin:0 0 4px;font-size:26px}.box p{margin:0 0 12px;color:var(--mut)}
+.box .btn{width:100%;margin-top:18px}
+#app{display:grid;grid-template-columns:220px 1fr;min-height:100vh}
+aside{background:var(--ink);color:#e9ebe4;padding:24px 16px;display:flex;flex-direction:column;gap:6px}
+aside h2{margin:0 0 18px;font-size:18px;padding:0 10px}
+aside button{background:none;border:0;color:inherit;text-align:left;padding:10px;border-radius:8px;cursor:pointer}
+aside button:hover,aside button.on{background:#2c3d35}
+aside .sp{flex:1}
+main{padding:28px;max-width:1000px;width:100%}
+main h1{margin:0 0 20px;font-size:24px}
+.panel{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:22px;margin-bottom:22px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
+.thumb{width:56px;height:56px;border-radius:8px;background:#e1e5dc center/cover;flex:none;border:1px solid var(--line)}
+.photo-in{display:flex;align-items:center;gap:12px}
+.mem{display:grid;grid-template-columns:56px 1fr 1fr auto;gap:10px;align-items:end;padding:10px 0;border-top:1px solid var(--line)}
+.mem label{margin-top:0}
+.pick{position:relative;cursor:pointer}
+.pick input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%}
+.actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.item{display:flex;gap:16px;padding:14px 0;border-top:1px solid var(--line);align-items:center}
+.item:first-child{border-top:0}
+.item .num{font-size:28px;font-weight:700;color:var(--pri);min-width:52px}
+.item .info{flex:1}.item h3{margin:0}
+.item small{color:var(--mut)}
+.item ul{margin:4px 0 0;padding-left:18px;color:var(--mut);font-size:14px}
+.ra-in{font-size:28px!important;letter-spacing:2px;font-weight:700}
+.urna-card{display:flex;align-items:center;gap:14px;padding:14px 0;border-top:1px solid var(--line)}
+.urna-card:first-child{border-top:0}
+.dot{width:14px;height:14px;border-radius:50%;background:#9aa097;flex:none}
+.dot.on{background:#2f9a5a}
+.bar{margin:14px 0}.bar .top{display:flex;justify-content:space-between;font-weight:600}
+.bar .track{height:14px;background:#e1e5dc;border-radius:7px;overflow:hidden;margin-top:4px}
+.bar .fill{height:100%;background:var(--pri);transition:width .5s}.bar .fill.gray{background:#8d978f}
+.empty{color:var(--mut);padding:8px 0}
+.tag{font-size:13px;padding:2px 8px;border-radius:10px;background:#e1e5dc}.tag.ok{background:#cfe8d9;color:var(--pri2)}
+@media(max-width:800px){#app{grid-template-columns:1fr}aside{flex-direction:row;flex-wrap:wrap}aside h2{width:100%;margin-bottom:6px}aside .sp{display:none}.grid2{grid-template-columns:1fr}.mem{grid-template-columns:56px 1fr}}
+</style>
+</head>
+<body>
+
+<section id="login">
+  <form class="box" id="f-login">
+    <h1>Painel da Urna</h1><p>Acesso da administração</p>
+    <label for="usuario">Usuário</label><input type="text" id="usuario" autocomplete="username" required>
+    <label for="senha">Senha</label><input type="password" id="senha" autocomplete="current-password" required>
+    <button class="btn" type="submit">Entrar</button>
+    <div class="msg" id="login-msg" role="alert"></div>
+  </form>
+</section>
+
+<section id="app" class="hidden">
+  <aside>
+    <h2>Painel</h2>
+    <button data-tab="liberar" class="on">Liberar urna</button>
+    <button data-tab="chapas">Chapas</button>
+    <button data-tab="alunos">Alunos</button>
+    <button data-tab="res">Resultados</button>
+    <div class="sp"></div>
+    <button id="sair">Sair</button>
+  </aside>
+  <main>
+    <!-- TELA DE VALIDAÇÃO -->
+    <div class="tab" id="t-liberar">
+      <h1>Liberar urna</h1>
+      <form class="panel" id="f-lib">
+        <label for="turma">Turma</label>
+        <select id="turma" required></select>
+        <label for="nome">Nome do aluno</label>
+        <select id="nome" required></select>
+        <label for="sel-urna">Urna</label>
+        <select id="sel-urna"></select>
+        <div class="actions"><button class="btn" type="submit">Liberar votação</button></div>
+        <div class="msg" id="lib-msg" role="alert"></div>
+      </form>
+      <div class="panel" id="urnas"></div>
+    </div>
+
+    <div class="tab hidden" id="t-chapas">
+      <h1>Chapas</h1>
+      <form class="panel" id="f-chapa">
+        <h3 id="f-titulo" style="margin:0 0 6px">Nova chapa</h3>
+        <div class="grid2">
+          <div><label for="c-nome">Nome da chapa</label><input type="text" id="c-nome" required></div>
+          <div><label for="c-num">Número do voto</label><input type="number" id="c-num" min="1" required></div>
+        </div>
+        <label>Foto da chapa</label>
+        <div class="photo-in"><div class="thumb" id="c-thumb"></div><input type="file" id="c-foto" accept="image/jpeg,image/png,image/webp"></div>
+        <label style="margin-top:20px">Integrantes</label>
+        <div id="membros"></div>
+        <div class="actions"><button type="button" class="btn sec sm" id="add-m">Adicionar integrante</button></div>
+        <div class="actions">
+          <button class="btn" type="submit">Salvar chapa</button>
+          <button class="btn sec" type="button" id="cancelar" hidden>Cancelar edição</button>
+        </div>
+        <div class="msg" id="c-msg" role="alert"></div>
+      </form>
+      <div class="panel" id="l-chapas"></div>
+    </div>
+
+    <div class="tab hidden" id="t-alunos">
+      <h1>Alunos</h1>
+      <form class="panel" id="f-aluno">
+        <div class="grid2">
+          <div><label for="a-nome">Nome do aluno</label><input type="text" id="a-nome" required></div>
+          <div><label for="a-turma">Turma</label><input type="text" id="a-turma"></div>
+        </div>
+        <div class="actions"><button class="btn" type="submit">Cadastrar aluno</button></div>
+        <label for="a-lote" style="margin-top:22px">Importar vários (uma linha por aluno:Nome;Turma)</label>
+        <textarea id="a-lote" rows="4" placeholder="Maria Souza;3A"></textarea>
+        <div class="actions"><button class="btn sec" type="button" id="importar">Importar lista</button></div>
+        <div class="msg" id="a-msg" role="alert"></div>
+      </form>
+      <div class="panel">
+        <input type="text" id="busca" placeholder="Buscar por nome">
+        <div id="l-alunos"></div>
+      </div>
+    </div>
+
+    <div class="tab hidden" id="t-res">
+      <h1>Resultados</h1>
+      <div class="panel" id="l-res"></div>
+      <button class="btn sec" id="atualizar">Atualizar</button>
+    </div>
+  </main>
+</section>
+
+<script type="module" src="./js/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Urna Eletrônica</title>
+<style>
+:root{--ink:#1d2a24;--mut:#66726b;--pri:#1f5f4a;--warn:#c8472f;--yel:#e8b931;--case:#c9cdc4}
+*{box-sizing:border-box}
+body{margin:0;font:16px/1.45 "Segoe UI",system-ui,sans-serif;color:var(--ink);background:#d9dcd3;min-height:100vh;display:grid;place-items:center;padding:16px;user-select:none}
+:focus-visible{outline:3px solid var(--yel);outline-offset:2px}
+.urna{display:grid;grid-template-columns:1.7fr 1fr;gap:18px;width:100%;max-width:960px;background:var(--case);border-radius:18px;padding:22px;box-shadow:0 10px 0 #a9ada3}
+.screen{background:#f1f2ec;border:6px solid #8d9188;border-radius:10px;min-height:440px;padding:20px;display:flex;flex-direction:column}
+.head{display:flex;justify-content:space-between;font-size:14px;color:var(--mut);min-height:20px}
+.digits{display:flex;gap:8px;margin:12px 0}
+.digit{width:46px;height:58px;border:2px solid var(--ink);display:grid;place-items:center;font-size:34px;font-weight:700;background:#fff}
+.cand{display:flex;gap:18px;align-items:flex-start;flex:1}
+.pic{width:130px;height:160px;background:#dfe2d8 center/cover;border:1px solid #9aa097;flex:none}
+.cand h2{margin:0 0 4px;font-size:24px}
+.mems{font-size:15px;margin:6px 0 0;padding:0;list-style:none}.mems li{padding:2px 0}
+.big{font-size:40px;font-weight:800;text-align:center;margin:auto}
+.big.fim{font-size:96px;letter-spacing:6px}
+.big small{display:block;font-size:17px;font-weight:400;color:var(--mut);margin-top:8px}
+.alert{font-size:22px;font-weight:700;color:var(--warn);margin-top:10px}
+.aviso{text-align:center;color:var(--warn);font-weight:600;min-height:24px}
+.foot{border-top:1px solid #9aa097;padding-top:8px;font-size:13px;color:var(--mut)}
+.keys{display:flex;flex-direction:column;gap:12px;justify-content:space-between}
+.pad{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
+.key{height:54px;border:0;border-radius:6px;background:#262b28;color:#fff;font-size:22px;font-weight:700;cursor:pointer;box-shadow:0 3px 0 #000}
+.key:active{transform:translateY(3px);box-shadow:none}
+.key:disabled{opacity:.45;cursor:not-allowed}
+.pad .z{grid-column:2}
+.row{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:8px}
+.row .key{font-size:12px;height:62px}
+.k-b{background:#f4f4f1;color:#222;box-shadow:0 3px 0 #999}
+.k-c{background:#e0732f;box-shadow:0 3px 0 #8d4414}
+.k-ok{background:#2f9a5a;box-shadow:0 3px 0 #1a5c35;font-size:14px!important}
+.setup{margin:auto;text-align:center;width:100%;max-width:320px}
+.setup input{width:100%;padding:10px;border:1px solid #9aa097;border-radius:8px;font:inherit;margin:12px 0}
+.setup button{padding:10px 18px;border:0;border-radius:8px;background:var(--pri);color:#fff;font:inherit;font-weight:600;cursor:pointer}
+@media(max-width:800px){.urna{grid-template-columns:1fr}.cand{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="urna">
+  <div class="screen" id="tela" aria-live="polite"></div>
+  <div class="keys">
+    <div class="pad" id="pad"></div>
+    <div class="row">
+      <button class="key k-b" data-k="branco">BRANCO</button>
+      <button class="key k-c" data-k="corrige">CORRIGE</button>
+      <button class="key k-ok" data-k="confirma">CONFIRMA</button>
+    </div>
+  </div>
+</div>
+
+<script type="module" src="./js/script.js"></script>
+</body>
+</html>
